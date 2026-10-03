@@ -1,0 +1,9 @@
+#!/bin/sh
+# Offline check of registry.json before every commit that touches it (fast, no network).
+# Enable once per clone:  git config core.hooksPath tools/hooks
+git diff --cached --name-only | grep -qx "registry.json" || exit 0
+. "$(dirname "$0")/_python.sh"
+"$PY" tools/registry_tool.py validate registry.json || {
+    echo "STC hook: registry.json has errors; commit refused." >&2
+    exit 1
+}

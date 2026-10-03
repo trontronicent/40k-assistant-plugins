@@ -1,0 +1,8 @@
+#!/bin/sh
+# Full check before pushing: every entry's tag, pinned commit and plugin manifest
+# (clones each plugin; needs git and network). Skip once with: git push --no-verify
+. "$(dirname "$0")/_python.sh"
+"$PY" tools/registry_tool.py validate registry.json --remote || {
+    echo "STC hook: remote validation failed; push refused." >&2
+    exit 1
+}

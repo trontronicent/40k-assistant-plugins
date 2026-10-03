@@ -1,0 +1,7 @@
+{
+  "$schema": "./schema/registry.schema.json",
+  "schema_version": 1,
+  "name": "Strategicum STC Index",
+  "updated": "2026-10-03",
+  "plugins": []
+}
