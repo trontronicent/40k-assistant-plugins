@@ -3,5 +3,32 @@
   "schema_version": 1,
   "name": "Strategicum STC Index",
   "updated": "2026-10-03",
-  "plugins": []
+  "plugins": [
+    {
+      "id": "nomanssky",
+      "name": "No Man's Sky",
+      "description": "Connector to No Man's Sky: reads your save files and shows location, inventories, ships, bases and how often the game saves.",
+      "author": "TronTronicEnt",
+      "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
+      "version": "0.1.0",
+      "tag": "v0.1.0",
+      "commit": "6ce987a7ae5ce73bb7b902a432b37dd6643a7006",
+      "kinds": [
+        "backend"
+      ],
+      "min_app_version": "3.0.0",
+      "plugin_api": 2,
+      "license": "MIT",
+      "permissions": [
+        "read-game-files",
+        "network"
+      ],
+      "homepage": "https://github.com/trontronicent/40k-assistant-nomanssky",
+      "tags": [
+        "game",
+        "no-mans-sky",
+        "companion"
+      ]
+    }
+  ]
 }
