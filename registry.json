@@ -7,20 +7,21 @@
     {
       "id": "nomanssky",
       "name": "No Man's Sky",
-      "description": "Connector to No Man's Sky: reads your save files and shows location, inventories (with the game's item names and icons), ships, bases and how often the game saves.",
+      "description": "Connector to No Man's Sky: reads your save files and shows location, inventories (with the game's item names and icons), ships, bases, every system you visited and - read live from the running game - the planets and resources of the systems you visit.",
       "author": "TronTronicEnt",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.2.0",
-      "tag": "v0.2.0",
-      "commit": "66f7f0672bace57953a58cda654dd9ed4c801899",
+      "version": "0.3.0",
+      "tag": "v0.3.0",
+      "commit": "023192cad85851d0867086e1ca2adf73e430d7bf",
       "kinds": [
         "backend"
       ],
-      "min_app_version": "3.1.0",
+      "min_app_version": "3.2.0",
       "plugin_api": 2,
       "license": "MIT",
       "permissions": [
         "read-game-files",
+        "read-game-memory",
         "network"
       ],
       "homepage": "https://github.com/trontronicent/40k-assistant-nomanssky",

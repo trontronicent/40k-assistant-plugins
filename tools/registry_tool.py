@@ -41,7 +41,7 @@ SUPPORTED_PLUGIN_API = {1, 2}
 KINDS = ("themes", "personas", "codex")
 ALL_KINDS = KINDS + ("backend",)
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
-PERMISSIONS = {"read-game-files", "network"}
+PERMISSIONS = {"read-game-files", "read-game-memory", "network"}
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
 GIT_TIMEOUT_S = 120
 

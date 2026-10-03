@@ -156,6 +156,7 @@
           "items": {
             "enum": [
               "read-game-files",
+              "read-game-memory",
               "network"
             ]
           },
