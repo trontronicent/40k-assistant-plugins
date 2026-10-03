@@ -36,8 +36,12 @@ from pathlib import Path
 MANIFEST_NAME = "strategicum-plugin.json"
 SUPPORTED_SCHEMA_VERSION = 1
 SUPPORTED_MANIFEST_VERSION = 1
-SUPPORTED_PLUGIN_API = {1}
+SUPPORTED_PLUGIN_API = {1, 2}
+# List-style contributions; "backend" (plugin API 2) is a single object.
 KINDS = ("themes", "personas", "codex")
+ALL_KINDS = KINDS + ("backend",)
+IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+PERMISSIONS = {"read-game-files", "network"}
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
 GIT_TIMEOUT_S = 120
 
@@ -56,7 +60,7 @@ CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 
 ENTRY_REQUIRED = ("id", "name", "description", "author", "repo", "version", "tag",
                   "commit", "kinds", "min_app_version", "plugin_api", "license")
-ENTRY_OPTIONAL = ("homepage", "tags", "yanked", "deprecated", "max_app_version")
+ENTRY_OPTIONAL = ("homepage", "tags", "yanked", "deprecated", "max_app_version", "permissions")
 
 # Persona fields a plugin may set; everything else is dropped by the app.
 PERSONA_FIELDS = {
@@ -155,9 +159,9 @@ def validate_entry(entry: object, index: int, allow_local: bool = False) -> Repo
             rep.error(where, "commit is still the placeholder; run: registry_tool.py pin ...")
     if "kinds" in entry:
         kinds = entry["kinds"]
-        if not (isinstance(kinds, list) and kinds and all(k in KINDS for k in kinds)
+        if not (isinstance(kinds, list) and kinds and all(k in ALL_KINDS for k in kinds)
                 and len(set(kinds)) == len(kinds)):
-            rep.error(where, f"kinds must be a non-empty list of distinct values from {list(KINDS)}")
+            rep.error(where, f"kinds must be a non-empty list of distinct values from {list(ALL_KINDS)}")
     if "plugin_api" in entry and entry["plugin_api"] not in SUPPORTED_PLUGIN_API:
         rep.error(where, f"plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
     if "homepage" in entry and not (isinstance(entry["homepage"], str) and entry["homepage"].startswith("https://")):
@@ -169,6 +173,9 @@ def validate_entry(entry: object, index: int, allow_local: bool = False) -> Repo
             rep.error(where, "tags must be at most 10 distinct lowercase words (a-z, 0-9, -)")
     for key in ("yanked", "deprecated"):
         is_text(key, 300)
+    if "permissions" in entry and not (isinstance(entry["permissions"], list)
+                                       and all(p in PERMISSIONS for p in entry["permissions"])):
+        rep.error(where, f"permissions must be a list from {sorted(PERMISSIONS)}")
     return rep
 
 
@@ -345,6 +352,31 @@ def _check_codex(root: Path, item: dict, rep: Report, where: str) -> None:
         rep.warn(where, f"{len(others)} non-Markdown file(s) will be ignored by the Codex (e.g. {others[0].name})")
 
 
+def _check_backend(root: Path, backend: object, plugin_api: object, rep: Report) -> None:
+    """Plugin API 2: a Python package the app imports and runs (needs a trust confirmation there)."""
+    where = "contributes.backend"
+    if plugin_api != 2:
+        rep.error(where, "needs app.plugin_api 2")
+    if not isinstance(backend, dict):
+        rep.error(where, "must be an object")
+        return
+    for key in backend:
+        if key not in ("module", "entry", "permissions", "python_requires"):
+            rep.error(where, f"unknown key '{key}'")
+    module, entry = backend.get("module"), backend.get("entry")
+    if not (isinstance(module, str) and IDENTIFIER_RE.match(module)):
+        rep.error(where, "module must be a Python package name")
+    elif not (root / module / "__init__.py").is_file():
+        rep.error(where, f"{module}/__init__.py not found")
+    if not (isinstance(entry, str) and IDENTIFIER_RE.match(entry)):
+        rep.error(where, "entry must be a function name")
+    perms = backend.get("permissions", [])
+    if not (isinstance(perms, list) and all(p in PERMISSIONS for p in perms)):
+        rep.error(where, f"permissions must be a list from {sorted(PERMISSIONS)}")
+    if backend.get("python_requires"):
+        rep.warn(where, "python_requires: the app never installs packages; list them in the README")
+
+
 def validate_manifest(root: Path, expect_id: str | None = None, expect_version: str | None = None,
                       expect_kinds: list[str] | None = None) -> tuple[Report, dict | None]:
     """Check a plugin checkout. Returns the report and the parsed manifest (or None)."""
@@ -396,10 +428,10 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
         rep.error("manifest", "contributes must be a non-empty object")
         contributes = {}
     for kind in contributes:
-        if kind == "backend":
-            rep.error("contributes", "backend code plugins are not supported by plugin_api 1")
-        elif kind not in KINDS:
-            rep.error("contributes", f"unknown kind '{kind}' (allowed: {list(KINDS)})")
+        if kind not in ALL_KINDS:
+            rep.error("contributes", f"unknown kind '{kind}' (allowed: {list(ALL_KINDS)})")
+    if "backend" in contributes:
+        _check_backend(root, contributes["backend"], app.get("plugin_api") if isinstance(app, dict) else None, rep)
 
     libraries = {c.get("library") for c in contributes.get("codex", []) if isinstance(c, dict)}
     for kind in KINDS:
@@ -436,7 +468,7 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
         rep.error("manifest", f"id is '{man.get('id')}' but the registry entry says '{expect_id}'")
     if expect_version is not None and man.get("version") != expect_version:
         rep.error("manifest", f"version is '{man.get('version')}' but the registry entry says '{expect_version}'")
-    if expect_kinds is not None and sorted(expect_kinds) != sorted(k for k in contributes if k in KINDS):
+    if expect_kinds is not None and sorted(expect_kinds) != sorted(k for k in contributes if k in ALL_KINDS):
         rep.error("manifest", f"contributes {sorted(contributes)} but the registry entry lists kinds {sorted(expect_kinds)}")
     for name in ("README.md", "LICENSE"):
         if not (root / name).is_file():
@@ -581,12 +613,15 @@ def cmd_pin(args: argparse.Namespace) -> int:
     fresh = {
         "id": man["id"], "name": man["name"], "description": man["description"], "author": author,
         "repo": args.repo, "version": man["version"], "tag": args.tag, "commit": commit,
-        "kinds": [k for k in KINDS if k in man["contributes"]],
+        "kinds": [k for k in ALL_KINDS if k in man["contributes"]],
         "min_app_version": man["app"]["min_version"], "plugin_api": man["app"]["plugin_api"],
         "license": man["license"],
     }
     if "max_version" in man["app"]:
         fresh["max_app_version"] = man["app"]["max_version"]
+    backend = man["contributes"].get("backend")
+    if isinstance(backend, dict) and backend.get("permissions"):
+        fresh["permissions"] = backend["permissions"]
     plugins = doc.setdefault("plugins", [])
     for i, entry in enumerate(plugins):
         if entry.get("id") == man["id"]:

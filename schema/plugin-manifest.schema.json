@@ -2,38 +2,88 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/trontronicent/40k-assistant-plugins/main/schema/plugin-manifest.schema.json",
   "title": "Strategicum plugin manifest (strategicum-plugin.json)",
-  "description": "Lives at the root of every plugin repository. Declares what the plugin contributes; plugin_api 1 allows declarative contributions only (no code).",
+  "description": "Lives at the root of every plugin repository. Declares what the plugin contributes. plugin_api 1: declarative contributions only; plugin_api 2 adds a backend (Python code run inside the app).",
   "type": "object",
-  "required": ["manifest_version", "id", "name", "version", "description", "author", "license", "app", "contributes"],
+  "required": [
+    "manifest_version",
+    "id",
+    "name",
+    "version",
+    "description",
+    "author",
+    "license",
+    "app",
+    "contributes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": {"type": "string"},
-    "manifest_version": {"const": 1},
-    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$"},
-    "name": {"type": "string", "minLength": 1, "maxLength": 60},
+    "$schema": {
+      "type": "string"
+    },
+    "manifest_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
     "version": {
       "type": "string",
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?$"
     },
-    "description": {"type": "string", "minLength": 1, "maxLength": 300},
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
     "author": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "url": {"type": "string", "pattern": "^https://"}
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        }
       }
     },
-    "license": {"type": "string", "minLength": 1},
+    "license": {
+      "type": "string",
+      "minLength": 1
+    },
     "app": {
       "type": "object",
-      "required": ["min_version", "plugin_api"],
+      "required": [
+        "min_version",
+        "plugin_api"
+      ],
       "additionalProperties": false,
       "properties": {
-        "min_version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
-        "max_version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
-        "plugin_api": {"enum": [1]}
+        "min_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "max_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "plugin_api": {
+          "enum": [
+            1,
+            2
+          ]
+        }
       }
     },
     "contributes": {
@@ -46,11 +96,20 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["id", "path"],
+            "required": [
+              "id",
+              "path"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$"},
-              "path": {"$ref": "#/$defs/relpath", "description": "Folder holding theme.json and theme.css (preview.png optional)."}
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$"
+              },
+              "path": {
+                "$ref": "#/$defs/relpath",
+                "description": "Folder holding theme.json and theme.css (preview.png optional)."
+              }
             }
           }
         },
@@ -59,11 +118,20 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["id", "path"],
+            "required": [
+              "id",
+              "path"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$"},
-              "path": {"$ref": "#/$defs/relpath", "description": "A .json file with persona fields."}
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$"
+              },
+              "path": {
+                "$ref": "#/$defs/relpath",
+                "description": "A .json file with persona fields."
+              }
             }
           }
         },
@@ -72,11 +140,55 @@
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["library", "path"],
+            "required": [
+              "library",
+              "path"
+            ],
             "additionalProperties": false,
             "properties": {
-              "library": {"type": "string", "pattern": "^[^_./\\\\:*?\"<>|][^/\\\\:*?\"<>|]{0,79}$"},
-              "path": {"$ref": "#/$defs/relpath", "description": "Folder of Markdown files; subfolders become categories."}
+              "library": {
+                "type": "string",
+                "pattern": "^[^_./\\\\:*?\"<>|][^/\\\\:*?\"<>|]{0,79}$"
+              },
+              "path": {
+                "$ref": "#/$defs/relpath",
+                "description": "Folder of Markdown files; subfolders become categories."
+              }
+            }
+          }
+        },
+        "backend": {
+          "type": "object",
+          "required": [
+            "module",
+            "entry"
+          ],
+          "additionalProperties": false,
+          "description": "plugin_api 2: a Python package imported by the app; entry(ctx) returns an object with start/stop/view/action.",
+          "properties": {
+            "module": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+            },
+            "entry": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+            },
+            "permissions": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "read-game-files",
+                  "network"
+                ]
+              }
+            },
+            "python_requires": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         }
