@@ -7,16 +7,16 @@
     {
       "id": "nomanssky",
       "name": "No Man's Sky",
-      "description": "Connector to No Man's Sky: save data (location, inventories with item names and icons, ships, bases), every visited system on a clickable map, and - read live from the running game - planets, resources and gas.",
-      "author": "TronTronicEnt",
+      "description": "Connector to No Man's Sky: save data, galaxy and system maps, economies and trade routes, a route planner (very much work in progress), and - live from the running game - planets, resources and gas, with item names and icons.",
+      "author": "Reto Kummer alias Reat Kay",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.4.1",
-      "tag": "v0.4.1",
-      "commit": "d0df9511895978c367760584ea1dc7ded4ee99c4",
+      "version": "0.8.0",
+      "tag": "v0.8.0",
+      "commit": "c2a9c1bcc9ac14e31a12e4abf58619f881984c44",
       "kinds": [
         "backend"
       ],
-      "min_app_version": "3.3.0",
+      "min_app_version": "3.6.0",
       "plugin_api": 2,
       "license": "MIT",
       "permissions": [
