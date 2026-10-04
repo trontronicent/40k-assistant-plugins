@@ -10,9 +10,9 @@
       "description": "Connector to No Man's Sky: inventories and storage containers with item categories and tooltips (where trade goods sell), galaxy and system maps with system names, economies and trade routes, a route planner (work in progress), and live planets and resources.",
       "author": "Reto Kummer alias Reat Kay",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.9.0",
-      "tag": "v0.9.0",
-      "commit": "dd89edefba8dfee5c3964129ccac5aa91a073858",
+      "version": "0.9.1",
+      "tag": "v0.9.1",
+      "commit": "546e5e05ab7e12cd9ad0ca6256fad898b8c935c8",
       "kinds": [
         "backend"
       ],
