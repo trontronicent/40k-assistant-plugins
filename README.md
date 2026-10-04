@@ -32,6 +32,12 @@ The app never installs Python packages for a plugin; use the standard library.
 The current app installs `backend` plugins; adapters for `themes`, `personas`
 and `codex` follow (the app shows such plugins as not installable yet).
 
+Every plugin can also bring **help and credits** (app 3.4.0+): `help` names a
+Markdown file in the plugin (at most 100 KB) and `credits` lists who made or
+contributed what (`[{name, for?, url?}]`, `https://` links only). The app shows
+both in its manual, in a section of the *Plugin Help* chapter, and the plugin
+list shows the manifest's `author` as a tag.
+
 ## Files
 
 | File | Purpose |

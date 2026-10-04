@@ -377,6 +377,51 @@ def _check_backend(root: Path, backend: object, plugin_api: object, rep: Report)
         rep.warn(where, "python_requires: the app never installs packages; list them in the README")
 
 
+MAX_HELP_BYTES = 100 * 1024
+MAX_CREDITS = 30
+CREDIT_KEYS = {"name", "for", "url"}
+
+
+def _check_help_and_credits(root: Path, man: dict, rep: "Report") -> None:
+    """Optional `help` (a .md file inside the plugin, UTF-8, <= 100 KB, shown in the app's manual under
+    Plugin Help) and `credits` ([{name, for?, url?}], <= 30, https links only). Same rules as the app."""
+    rel = man.get("help")
+    if rel is not None:
+        path = _confined(root, rel)
+        if path is None or not str(rel).lower().endswith(".md"):
+            rep.error("manifest", "help must be the relative path of a .md file inside the plugin")
+        elif not path.is_file():
+            rep.error("manifest", f"help file {rel} not found")
+        elif path.stat().st_size > MAX_HELP_BYTES:
+            rep.error("manifest", f"help file {rel} is larger than {MAX_HELP_BYTES // 1024} KB")
+        else:
+            try:
+                path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                rep.error("manifest", f"help file {rel} is not UTF-8")
+    credits = man.get("credits")
+    if credits is None:
+        return
+    if not isinstance(credits, list) or len(credits) > MAX_CREDITS:
+        rep.error("manifest", f"credits must be a list of at most {MAX_CREDITS} entries")
+        return
+    for i, item in enumerate(credits):
+        where = f"credits[{i}]"
+        if not isinstance(item, dict):
+            rep.error("manifest", f"{where} must be an object")
+            continue
+        for key in item:
+            if key not in CREDIT_KEYS:
+                rep.error("manifest", f"{where}: unknown key '{key}'")
+        name, what, url = item.get("name"), item.get("for"), item.get("url")
+        if not (isinstance(name, str) and name.strip() and len(name) <= 80):
+            rep.error("manifest", f"{where}.name must be a non-empty string of at most 80 characters")
+        if what is not None and not (isinstance(what, str) and len(what) <= 200):
+            rep.error("manifest", f"{where}.for must be a string of at most 200 characters")
+        if url is not None and not (isinstance(url, str) and url.startswith("https://") and len(url) <= 200):
+            rep.error("manifest", f"{where}.url must be an https:// URL of at most 200 characters")
+
+
 def validate_manifest(root: Path, expect_id: str | None = None, expect_version: str | None = None,
                       expect_kinds: list[str] | None = None) -> tuple[Report, dict | None]:
     """Check a plugin checkout. Returns the report and the parsed manifest (or None)."""
@@ -394,7 +439,7 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
         return rep, None
 
     allowed = {"$schema", "manifest_version", "id", "name", "version", "description",
-               "author", "license", "app", "contributes"}
+               "author", "license", "app", "contributes", "help", "credits"}
     for key in man:
         if key not in allowed:
             rep.error("manifest", f"unknown key '{key}'")
@@ -423,6 +468,7 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
         if app.get("plugin_api") not in SUPPORTED_PLUGIN_API:
             rep.error("manifest", f"app.plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
 
+    _check_help_and_credits(root, man, rep)
     contributes = man.get("contributes")
     if not (isinstance(contributes, dict) and contributes):
         rep.error("manifest", "contributes must be a non-empty object")

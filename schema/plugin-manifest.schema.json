@@ -194,6 +194,39 @@
           }
         }
       }
+    },
+    "help": {
+      "type": "string",
+      "pattern": "^[^/\\\\].*\\.[mM][dD]$",
+      "description": "Relative path of a Markdown help file (<= 100 KB), shown in the app's manual under Plugin Help (app 3.4.0+)."
+    },
+    "credits": {
+      "type": "array",
+      "maxItems": 30,
+      "description": "Who made or contributed what; shown with the plugin's help (app 3.4.0+).",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "for": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https://",
+            "maxLength": 200
+          }
+        }
+      }
     }
   },
   "$defs": {
