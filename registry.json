@@ -2,17 +2,17 @@
   "$schema": "./schema/registry.schema.json",
   "schema_version": 1,
   "name": "Strategicum STC Index",
-  "updated": "2026-10-04",
+  "updated": "2026-10-05",
   "plugins": [
     {
       "id": "nomanssky",
       "name": "No Man's Sky",
-      "description": "Connector to No Man's Sky: inventories and storage containers with item categories and tooltips (where trade goods sell), galaxy and system maps with system names, economies and trade routes, a route planner (work in progress), and live planets and resources.",
+      "description": "Connector to No Man's Sky: inventories, storage and equipment (what each part does, base values), galaxy and system maps with names, economies and trade routes, settlements, frigates and timers, a persona that answers from your game data, and route planner and star positions (prototypes).",
       "author": "Reto Kummer alias Reat Kay",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.9.1",
-      "tag": "v0.9.1",
-      "commit": "546e5e05ab7e12cd9ad0ca6256fad898b8c935c8",
+      "version": "0.10.0",
+      "tag": "v0.10.0",
+      "commit": "b9b7cf0eb809a3abd98d73f9d278054acdbb2493",
       "kinds": [
         "backend"
       ],
