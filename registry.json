@@ -10,9 +10,9 @@
       "description": "Connector to No Man's Sky: inventories, storage and equipment (what each part does, base values), galaxy and system maps with names, economies and trade routes, settlements, frigates and timers, a persona that answers from your game data, and route planner and star positions (prototypes).",
       "author": "Reto Kummer alias Reat Kay",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.10.0",
-      "tag": "v0.10.0",
-      "commit": "b9b7cf0eb809a3abd98d73f9d278054acdbb2493",
+      "version": "0.11.0",
+      "tag": "v0.11.0",
+      "commit": "57b8a3b4364e084cc4e8b8c177d3f8738f7f67eb",
       "kinds": [
         "backend"
       ],
