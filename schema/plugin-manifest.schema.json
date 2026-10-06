@@ -195,6 +195,12 @@
         }
       }
     },
+    "data_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000,
+      "description": "Format version of the data the plugin stores in its data folder; raise it whenever that format changes. The app warns before installing a version whose data_version differs from the data already there (app 3.12.0+)."
+    },
     "help": {
       "type": "string",
       "pattern": "^[^/\\\\].*\\.[mM][dD]$",

@@ -439,7 +439,7 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
         return rep, None
 
     allowed = {"$schema", "manifest_version", "id", "name", "version", "description",
-               "author", "license", "app", "contributes", "help", "credits"}
+               "author", "license", "app", "contributes", "help", "credits", "data_version"}
     for key in man:
         if key not in allowed:
             rep.error("manifest", f"unknown key '{key}'")
@@ -469,6 +469,10 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
             rep.error("manifest", f"app.plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
 
     _check_help_and_credits(root, man, rep)
+    data_version = man.get("data_version")
+    if data_version is not None and not (isinstance(data_version, int) and not isinstance(data_version, bool)
+                                         and 1 <= data_version <= 1_000_000):
+        rep.error("manifest", "data_version must be a whole number from 1 to 1000000")
     contributes = man.get("contributes")
     if not (isinstance(contributes, dict) and contributes):
         rep.error("manifest", "contributes must be a non-empty object")
