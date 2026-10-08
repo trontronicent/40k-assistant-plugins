@@ -2,7 +2,7 @@
   "$schema": "./schema/registry.schema.json",
   "schema_version": 1,
   "name": "Strategicum STC Index",
-  "updated": "2026-10-08",
+  "updated": "2026-10-09",
   "plugins": [
     {
       "id": "nomanssky",
@@ -10,9 +10,9 @@
       "description": "Connector to No Man's Sky: inventories, storage and equipment (what each part does, base values), galaxy and system maps, economies and trade routes, settlements, frigates and timers, and a persona that answers from your game data - cooking, expeditions, item values - also with the game closed.",
       "author": "Reto Kummer alias Reat Kay",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.13.0",
-      "tag": "v0.13.0",
-      "commit": "9c17b85b1516f374a29b249870ae8fcf41dba84b",
+      "version": "0.14.0",
+      "tag": "v0.14.0",
+      "commit": "29ab66db1fc16d63058596780a1a36b8f6068529",
       "kinds": [
         "backend"
       ],
