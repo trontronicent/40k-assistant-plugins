@@ -62,6 +62,9 @@ ENTRY_REQUIRED = ("id", "name", "description", "author", "repo", "version", "tag
                   "commit", "kinds", "min_app_version", "plugin_api", "license")
 ENTRY_OPTIONAL = ("homepage", "tags", "yanked", "deprecated", "max_app_version", "permissions")
 
+PERSONA_MODES = {"off", "tool", "auto"}      # web_search_mode and knowledge_mode
+MAX_KNOWLEDGE_TOP_K = 10
+
 # Persona fields a plugin may set; everything else is dropped by the app.
 PERSONA_FIELDS = {
     "name", "appearance", "clothing", "personality", "speech_style", "background",
@@ -112,8 +115,78 @@ def _check_repo_url(url: object, allow_local: bool) -> str | None:
     return None
 
 
+# An entry's plain text fields and their limits; `yanked` and `deprecated` are optional notes shown to the user.
+ENTRY_TEXTS = (("name", 60), ("description", 300), ("author", 80), ("license", 60), ("tag", 100),
+               ("yanked", 300), ("deprecated", 300))
+MAX_ENTRY_TAGS = 10
+
+
+def _entry_text_fields(entry: dict, where: str, rep: Report) -> None:
+    """Every text field of an entry that is present must be non-empty and within its limit."""
+    for key, max_len in ENTRY_TEXTS:
+        value = entry.get(key)
+        if key in entry and (not isinstance(value, str) or not value.strip() or len(value) > max_len):
+            rep.error(where, f"'{key}' must be a non-empty string of at most {max_len} characters")
+
+
+def _entry_identity(entry: dict, where: str, allow_local: bool, rep: Report) -> None:
+    """The id, the clone URL, the version and the tag that must match it."""
+    if "id" in entry and not (isinstance(entry["id"], str) and ID_RE.match(entry["id"])):
+        rep.error(where, "id must match ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
+    if "repo" in entry:
+        problem = _check_repo_url(entry["repo"], allow_local)
+        if problem:
+            rep.error(where, problem)
+    if "version" in entry and not (isinstance(entry["version"], str) and SEMVER_RE.match(entry["version"])):
+        rep.error(where, "version must be semantic (1.2.3)")
+    if isinstance(entry.get("version"), str) and isinstance(entry.get("tag"), str) \
+            and entry["tag"] not in (entry["version"], f"v{entry['version']}"):
+        rep.error(where, f"tag '{entry['tag']}' must be 'v{entry['version']}' (or '{entry['version']}')")
+
+
+def _entry_commit(entry: dict, where: str, rep: Report) -> None:
+    """The pinned commit: a full lowercase hash, and not the all-zero placeholder of a hand-written entry."""
+    if "commit" not in entry:
+        return
+    commit = entry["commit"]
+    if not (isinstance(commit, str) and COMMIT_RE.match(commit)):
+        rep.error(where, "commit must be the full 40-character lowercase hash")
+    elif set(commit) == {"0"}:
+        rep.error(where, "commit is still the placeholder; run: registry_tool.py pin ...")
+
+
+def _entry_app_fields(entry: dict, where: str, rep: Report) -> None:
+    """What the entry promises about the app: version range, plugin API, kinds, permissions."""
+    for key in ("min_app_version", "max_app_version"):
+        if key in entry and not (isinstance(entry[key], str) and SEMVER_RE.match(entry[key])):
+            rep.error(where, f"{key} must be semantic (3.0.0)")
+    if "kinds" in entry:
+        kinds = entry["kinds"]
+        if not (isinstance(kinds, list) and kinds and all(k in ALL_KINDS for k in kinds)
+                and len(set(kinds)) == len(kinds)):
+            rep.error(where, f"kinds must be a non-empty list of distinct values from {list(ALL_KINDS)}")
+    if "plugin_api" in entry and entry["plugin_api"] not in SUPPORTED_PLUGIN_API:
+        rep.error(where, f"plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
+    if "permissions" in entry and not (isinstance(entry["permissions"], list)
+                                       and all(p in PERMISSIONS for p in entry["permissions"])):
+        rep.error(where, f"permissions must be a list from {sorted(PERMISSIONS)}")
+
+
+def _entry_listing_fields(entry: dict, where: str, rep: Report) -> None:
+    """What the index page shows beside the name: the homepage link and the search tags."""
+    if "homepage" in entry and not (isinstance(entry["homepage"], str) and entry["homepage"].startswith("https://")):
+        rep.error(where, "homepage must be an https:// URL")
+    if "tags" in entry:
+        tags = entry["tags"]
+        if not (isinstance(tags, list) and len(tags) <= MAX_ENTRY_TAGS and len(set(map(str, tags))) == len(tags)
+                and all(isinstance(t, str) and TAG_NAME_RE.match(t) for t in tags)):
+            rep.error(where, f"tags must be at most {MAX_ENTRY_TAGS} distinct lowercase words (a-z, 0-9, -)")
+
+
 def validate_entry(entry: object, index: int, allow_local: bool = False) -> Report:
-    """Check one registry entry's shape and values (no network)."""
+    """Check one registry entry's shape and values (no network).
+
+    A thin assembler over the section checks above: keys, texts, identity, commit, app promises, listing."""
     rep = Report()
     where = f"plugins[{index}]"
     if not isinstance(entry, dict):
@@ -127,55 +200,11 @@ def validate_entry(entry: object, index: int, allow_local: bool = False) -> Repo
     for key in entry:
         if key not in ENTRY_REQUIRED and key not in ENTRY_OPTIONAL:
             rep.error(where, f"unknown key '{key}'")
-
-    def is_text(key: str, max_len: int) -> bool:
-        value = entry.get(key)
-        if key in entry and (not isinstance(value, str) or not value.strip() or len(value) > max_len):
-            rep.error(where, f"'{key}' must be a non-empty string of at most {max_len} characters")
-            return False
-        return True
-
-    for key, max_len in (("name", 60), ("description", 300), ("author", 80), ("license", 60), ("tag", 100)):
-        is_text(key, max_len)
-    if "id" in entry and not (isinstance(entry["id"], str) and ID_RE.match(entry["id"])):
-        rep.error(where, "id must match ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
-    if "repo" in entry:
-        problem = _check_repo_url(entry["repo"], allow_local)
-        if problem:
-            rep.error(where, problem)
-    if "version" in entry and not (isinstance(entry["version"], str) and SEMVER_RE.match(entry["version"])):
-        rep.error(where, "version must be semantic (1.2.3)")
-    if isinstance(entry.get("version"), str) and isinstance(entry.get("tag"), str) \
-            and entry["tag"] not in (entry["version"], f"v{entry['version']}"):
-        rep.error(where, f"tag '{entry['tag']}' must be 'v{entry['version']}' (or '{entry['version']}')")
-    for key in ("min_app_version", "max_app_version"):
-        if key in entry and not (isinstance(entry[key], str) and SEMVER_RE.match(entry[key])):
-            rep.error(where, f"{key} must be semantic (3.0.0)")
-    if "commit" in entry:
-        commit = entry["commit"]
-        if not (isinstance(commit, str) and COMMIT_RE.match(commit)):
-            rep.error(where, "commit must be the full 40-character lowercase hash")
-        elif set(commit) == {"0"}:
-            rep.error(where, "commit is still the placeholder; run: registry_tool.py pin ...")
-    if "kinds" in entry:
-        kinds = entry["kinds"]
-        if not (isinstance(kinds, list) and kinds and all(k in ALL_KINDS for k in kinds)
-                and len(set(kinds)) == len(kinds)):
-            rep.error(where, f"kinds must be a non-empty list of distinct values from {list(ALL_KINDS)}")
-    if "plugin_api" in entry and entry["plugin_api"] not in SUPPORTED_PLUGIN_API:
-        rep.error(where, f"plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
-    if "homepage" in entry and not (isinstance(entry["homepage"], str) and entry["homepage"].startswith("https://")):
-        rep.error(where, "homepage must be an https:// URL")
-    if "tags" in entry:
-        tags = entry["tags"]
-        if not (isinstance(tags, list) and len(tags) <= 10 and len(set(map(str, tags))) == len(tags)
-                and all(isinstance(t, str) and TAG_NAME_RE.match(t) for t in tags)):
-            rep.error(where, "tags must be at most 10 distinct lowercase words (a-z, 0-9, -)")
-    for key in ("yanked", "deprecated"):
-        is_text(key, 300)
-    if "permissions" in entry and not (isinstance(entry["permissions"], list)
-                                       and all(p in PERMISSIONS for p in entry["permissions"])):
-        rep.error(where, f"permissions must be a list from {sorted(PERMISSIONS)}")
+    _entry_text_fields(entry, where, rep)
+    _entry_identity(entry, where, allow_local, rep)
+    _entry_commit(entry, where, rep)
+    _entry_app_fields(entry, where, rep)
+    _entry_listing_fields(entry, where, rep)
     return rep
 
 
@@ -294,19 +323,48 @@ def _check_theme(root: Path, item: dict, rep: Report, where: str) -> None:
         rep.error(where, "preview.png is not a PNG file")
 
 
-def _check_persona(root: Path, item: dict, rep: Report, where: str, libraries: set[str]) -> None:
+def _persona_file(root: Path, item: dict, rep: Report, where: str) -> dict | None:
+    """The parsed persona document, or None with the reason reported (path, suffix, JSON, type)."""
     path = _confined(root, item.get("path"))
     if path is None:
         rep.error(where, "path must be relative and stay inside the plugin")
-        return
+        return None
     if path.suffix.lower() != ".json" or not path.is_file():
         rep.error(where, f"{item['path']} must be an existing .json file")
-        return
+        return None
     data = _load_json(path, rep, where)
     if data is None:
-        return
+        return None
     if not isinstance(data, dict):
         rep.error(where, "persona file must be a JSON object")
+        return None
+    return data
+
+
+def _persona_knowledge(data: dict, rep: Report, where: str, libraries: set[str]) -> None:
+    """The Codex and web-search settings, and the libraries the persona claims.
+
+    A library name the manifest does not contribute leaves the persona with no sources at all, which looks like a
+    broken Codex rather than a typo."""
+    for key, allowed in (("web_search_mode", PERSONA_MODES), ("knowledge_mode", PERSONA_MODES)):
+        if key in data and data[key] not in allowed:
+            rep.error(where, f"{key} must be one of {sorted(allowed)}")
+    if "knowledge_top_k" in data and not (isinstance(data["knowledge_top_k"], int)
+                                          and 1 <= data["knowledge_top_k"] <= MAX_KNOWLEDGE_TOP_K):
+        rep.error(where, f"knowledge_top_k must be an integer from 1 to {MAX_KNOWLEDGE_TOP_K}")
+    refs = data.get("knowledge_plugin_libraries", [])
+    if not isinstance(refs, list) or not all(isinstance(r, str) for r in refs):
+        rep.error(where, "knowledge_plugin_libraries must be a list of library names")
+        return
+    for ref in refs:
+        if ref not in libraries:
+            rep.error(where, f"knowledge_plugin_libraries names '{ref}', which this plugin's codex does not contribute")
+
+
+def _check_persona(root: Path, item: dict, rep: Report, where: str, libraries: set[str]) -> None:
+    """One persona contribution: the file, its required fields, the fields the app would drop, its settings."""
+    data = _persona_file(root, item, rep, where)
+    if data is None:
         return
     for key in ("name", "system_prompt"):
         if not isinstance(data.get(key), str) or not data[key].strip():
@@ -314,18 +372,7 @@ def _check_persona(root: Path, item: dict, rep: Report, where: str, libraries: s
     for key in data:
         if key not in PERSONA_FIELDS:
             rep.warn(where, f"'{key}' is not a plugin persona field; the app will drop it")
-    for key, allowed in (("web_search_mode", {"off", "tool", "auto"}), ("knowledge_mode", {"off", "tool", "auto"})):
-        if key in data and data[key] not in allowed:
-            rep.error(where, f"{key} must be one of {sorted(allowed)}")
-    if "knowledge_top_k" in data and not (isinstance(data["knowledge_top_k"], int) and 1 <= data["knowledge_top_k"] <= 10):
-        rep.error(where, "knowledge_top_k must be an integer from 1 to 10")
-    refs = data.get("knowledge_plugin_libraries", [])
-    if not isinstance(refs, list) or not all(isinstance(r, str) for r in refs):
-        rep.error(where, "knowledge_plugin_libraries must be a list of library names")
-    else:
-        for ref in refs:
-            if ref not in libraries:
-                rep.error(where, f"knowledge_plugin_libraries names '{ref}', which this plugin's codex does not contribute")
+    _persona_knowledge(data, rep, where, libraries)
 
 
 def _check_codex(root: Path, item: dict, rep: Report, where: str) -> None:
@@ -382,23 +429,46 @@ MAX_CREDITS = 30
 CREDIT_KEYS = {"name", "for", "url"}
 
 
-def _check_help_and_credits(root: Path, man: dict, rep: "Report") -> None:
-    """Optional `help` (a .md file inside the plugin, UTF-8, <= 100 KB, shown in the app's manual under
-    Plugin Help) and `credits` ([{name, for?, url?}], <= 30, https links only). Same rules as the app."""
+def _check_help(root: Path, man: dict, rep: "Report") -> None:
+    """Optional `help`: a .md file inside the plugin, UTF-8, <= 100 KB, shown in the app's manual under
+    Plugin Help. Same rules as the app."""
     rel = man.get("help")
-    if rel is not None:
-        path = _confined(root, rel)
-        if path is None or not str(rel).lower().endswith(".md"):
-            rep.error("manifest", "help must be the relative path of a .md file inside the plugin")
-        elif not path.is_file():
-            rep.error("manifest", f"help file {rel} not found")
-        elif path.stat().st_size > MAX_HELP_BYTES:
-            rep.error("manifest", f"help file {rel} is larger than {MAX_HELP_BYTES // 1024} KB")
-        else:
-            try:
-                path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                rep.error("manifest", f"help file {rel} is not UTF-8")
+    if rel is None:
+        return
+    path = _confined(root, rel)
+    if path is None or not str(rel).lower().endswith(".md"):
+        rep.error("manifest", "help must be the relative path of a .md file inside the plugin")
+    elif not path.is_file():
+        rep.error("manifest", f"help file {rel} not found")
+    elif path.stat().st_size > MAX_HELP_BYTES:
+        rep.error("manifest", f"help file {rel} is larger than {MAX_HELP_BYTES // 1024} KB")
+    else:
+        try:
+            path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            rep.error("manifest", f"help file {rel} is not UTF-8")
+
+
+def _check_credit(item: object, where: str, rep: "Report") -> None:
+    """One credit: {name, for?, url?} with https links only."""
+    if not isinstance(item, dict):
+        rep.error("manifest", f"{where} must be an object")
+        return
+    for key in item:
+        if key not in CREDIT_KEYS:
+            rep.error("manifest", f"{where}: unknown key '{key}'")
+    name, what, url = item.get("name"), item.get("for"), item.get("url")
+    if not (isinstance(name, str) and name.strip() and len(name) <= 80):
+        rep.error("manifest", f"{where}.name must be a non-empty string of at most 80 characters")
+    if what is not None and not (isinstance(what, str) and len(what) <= 200):
+        rep.error("manifest", f"{where}.for must be a string of at most 200 characters")
+    if url is not None and not (isinstance(url, str) and url.startswith("https://") and len(url) <= 200):
+        rep.error("manifest", f"{where}.url must be an https:// URL of at most 200 characters")
+
+
+def _check_help_and_credits(root: Path, man: dict, rep: "Report") -> None:
+    """Optional `help` (`_check_help`) and `credits` ([{name, for?, url?}], <= 30, `_check_credit`)."""
+    _check_help(root, man, rep)
     credits = man.get("credits")
     if credits is None:
         return
@@ -406,25 +476,130 @@ def _check_help_and_credits(root: Path, man: dict, rep: "Report") -> None:
         rep.error("manifest", f"credits must be a list of at most {MAX_CREDITS} entries")
         return
     for i, item in enumerate(credits):
-        where = f"credits[{i}]"
+        _check_credit(item, f"credits[{i}]", rep)
+
+
+MANIFEST_KEYS = {"$schema", "manifest_version", "id", "name", "version", "description",
+                 "author", "license", "app", "contributes", "help", "credits", "data_version"}
+MANIFEST_TEXTS = (("name", 60), ("description", 300), ("license", 60))
+MAX_DATA_VERSION = 1_000_000
+# The one check per contribution kind, so adding a kind is a row here and not a branch in the loop.
+KIND_CHECKS = {"themes": _check_theme, "codex": _check_codex}
+
+
+def _manifest_identity(man: dict, rep: Report) -> None:
+    """The keys the app knows, the format version, the id, the version and the plain text fields."""
+    for key in man:
+        if key not in MANIFEST_KEYS:
+            rep.error("manifest", f"unknown key '{key}'")
+    if man.get("manifest_version") != SUPPORTED_MANIFEST_VERSION:
+        rep.error("manifest", f"manifest_version must be {SUPPORTED_MANIFEST_VERSION}")
+    if not (isinstance(man.get("id"), str) and ID_RE.match(man["id"])):
+        rep.error("manifest", "id must match ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
+    if not (isinstance(man.get("version"), str) and SEMVER_RE.match(man["version"])):
+        rep.error("manifest", "version must be semantic (1.2.3)")
+    for key, max_len in MANIFEST_TEXTS:
+        if not isinstance(man.get(key), str) or not man[key].strip() or len(man[key]) > max_len:
+            rep.error("manifest", f"'{key}' must be a non-empty string of at most {max_len} characters")
+    author = man.get("author")
+    if not (isinstance(author, dict) and isinstance(author.get("name"), str) and author["name"]):
+        rep.error("manifest", "author must be an object with a name")
+    elif "url" in author and not str(author["url"]).startswith("https://"):
+        rep.error("manifest", "author.url must be an https:// URL")
+
+
+def _manifest_app(man: dict, rep: Report) -> None:
+    """The `app` block: the version range this plugin supports and the plugin API it needs."""
+    app = man.get("app")
+    if not isinstance(app, dict):
+        rep.error("manifest", "app must be an object with min_version and plugin_api")
+        return
+    if not (isinstance(app.get("min_version"), str) and APP_VERSION_RE.match(app["min_version"])):
+        rep.error("manifest", "app.min_version must look like 3.0.0")
+    if "max_version" in app and not (isinstance(app["max_version"], str) and APP_VERSION_RE.match(app["max_version"])):
+        rep.error("manifest", "app.max_version must look like 3.9.0")
+    if app.get("plugin_api") not in SUPPORTED_PLUGIN_API:
+        rep.error("manifest", f"app.plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
+
+
+def _manifest_data_version(man: dict, rep: Report) -> None:
+    """Optional `data_version`: a whole number the app compares when a plugin's stored data format changed."""
+    data_version = man.get("data_version")
+    if data_version is not None and not (isinstance(data_version, int) and not isinstance(data_version, bool)
+                                         and 1 <= data_version <= MAX_DATA_VERSION):
+        rep.error("manifest", f"data_version must be a whole number from 1 to {MAX_DATA_VERSION}")
+
+
+def _contribution_key(kind: str, item: dict, seen: set, rep: Report, where: str) -> bool:
+    """Check one item's keys and its id/library, and record it. False when the item must not be checked further."""
+    keys = {"library", "path"} if kind == "codex" else {"id", "path"}
+    if set(item) != keys:
+        rep.error(where, f"must have exactly the keys {sorted(keys)}")
+        return False
+    key = item["library"] if kind == "codex" else item["id"]
+    if kind != "codex" and not (isinstance(key, str) and SUB_ID_RE.match(key)):
+        rep.error(where, "id must be lowercase letters, digits and hyphens")
+    if key in seen:
+        rep.error(where, f"duplicate {'library' if kind == 'codex' else 'id'} '{key}'")
+    seen.add(key)
+    return True
+
+
+def _check_kind(root: Path, kind: str, items: object, libraries: set, rep: Report) -> None:
+    """Every contribution of one list kind: a non-empty list of items with distinct ids and checked files."""
+    if not isinstance(items, list) or not items:
+        rep.error("contributes", f"{kind} must be a non-empty list")
+        return
+    seen: set = set()
+    for i, item in enumerate(items):
+        where = f"contributes.{kind}[{i}]"
         if not isinstance(item, dict):
-            rep.error("manifest", f"{where} must be an object")
+            rep.error(where, "must be an object")
             continue
-        for key in item:
-            if key not in CREDIT_KEYS:
-                rep.error("manifest", f"{where}: unknown key '{key}'")
-        name, what, url = item.get("name"), item.get("for"), item.get("url")
-        if not (isinstance(name, str) and name.strip() and len(name) <= 80):
-            rep.error("manifest", f"{where}.name must be a non-empty string of at most 80 characters")
-        if what is not None and not (isinstance(what, str) and len(what) <= 200):
-            rep.error("manifest", f"{where}.for must be a string of at most 200 characters")
-        if url is not None and not (isinstance(url, str) and url.startswith("https://") and len(url) <= 200):
-            rep.error("manifest", f"{where}.url must be an https:// URL of at most 200 characters")
+        if not _contribution_key(kind, item, seen, rep, where):
+            continue
+        if kind == "personas":          # the only check that needs the plugin's own libraries
+            _check_persona(root, item, rep, where, libraries)
+        else:
+            KIND_CHECKS[kind](root, item, rep, where)
+
+
+def _manifest_contributions(root: Path, man: dict, rep: Report) -> dict:
+    """Every contribution of the manifest; returns the `contributes` object ({} when it is unusable)."""
+    contributes = man.get("contributes")
+    if not (isinstance(contributes, dict) and contributes):
+        rep.error("manifest", "contributes must be a non-empty object")
+        return {}
+    for kind in contributes:
+        if kind not in ALL_KINDS:
+            rep.error("contributes", f"unknown kind '{kind}' (allowed: {list(ALL_KINDS)})")
+    app = man.get("app")
+    if "backend" in contributes:
+        _check_backend(root, contributes["backend"], app.get("plugin_api") if isinstance(app, dict) else None, rep)
+    libraries = {c.get("library") for c in contributes.get("codex", []) if isinstance(c, dict)}
+    for kind in KINDS:
+        if contributes.get(kind) is not None:
+            _check_kind(root, kind, contributes[kind], libraries, rep)
+    return contributes
+
+
+def _manifest_expectations(man: dict, contributes: dict, rep: Report, expect: "tuple") -> None:
+    """What the registry entry says this manifest must be: (id, version, kinds); None means "do not check"."""
+    expect_id, expect_version, expect_kinds = expect
+    if expect_id is not None and man.get("id") != expect_id:
+        rep.error("manifest", f"id is '{man.get('id')}' but the registry entry says '{expect_id}'")
+    if expect_version is not None and man.get("version") != expect_version:
+        rep.error("manifest", f"version is '{man.get('version')}' but the registry entry says '{expect_version}'")
+    if expect_kinds is not None and sorted(expect_kinds) != sorted(k for k in contributes if k in ALL_KINDS):
+        rep.error("manifest", f"contributes {sorted(contributes)} but the registry entry lists kinds {sorted(expect_kinds)}")
 
 
 def validate_manifest(root: Path, expect_id: str | None = None, expect_version: str | None = None,
                       expect_kinds: list[str] | None = None) -> tuple[Report, dict | None]:
-    """Check a plugin checkout. Returns the report and the parsed manifest (or None)."""
+    """Check a plugin checkout. Returns the report and the parsed manifest (or None).
+
+    A thin assembler over the section checks above: the tree, the manifest's own fields, the app block, help and
+    credits, data_version, every contribution, and what the registry entry expects."""
     rep = Report()
     root = Path(root)
     manifest_path = root / MANIFEST_NAME
@@ -438,88 +613,12 @@ def validate_manifest(root: Path, expect_id: str | None = None, expect_version: 
             rep.error("manifest", "must be a JSON object")
         return rep, None
 
-    allowed = {"$schema", "manifest_version", "id", "name", "version", "description",
-               "author", "license", "app", "contributes", "help", "credits", "data_version"}
-    for key in man:
-        if key not in allowed:
-            rep.error("manifest", f"unknown key '{key}'")
-    if man.get("manifest_version") != SUPPORTED_MANIFEST_VERSION:
-        rep.error("manifest", f"manifest_version must be {SUPPORTED_MANIFEST_VERSION}")
-    if not (isinstance(man.get("id"), str) and ID_RE.match(man["id"])):
-        rep.error("manifest", "id must match ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
-    if not (isinstance(man.get("version"), str) and SEMVER_RE.match(man["version"])):
-        rep.error("manifest", "version must be semantic (1.2.3)")
-    for key, max_len in (("name", 60), ("description", 300), ("license", 60)):
-        if not isinstance(man.get(key), str) or not man[key].strip() or len(man[key]) > max_len:
-            rep.error("manifest", f"'{key}' must be a non-empty string of at most {max_len} characters")
-    author = man.get("author")
-    if not (isinstance(author, dict) and isinstance(author.get("name"), str) and author["name"]):
-        rep.error("manifest", "author must be an object with a name")
-    elif "url" in author and not str(author["url"]).startswith("https://"):
-        rep.error("manifest", "author.url must be an https:// URL")
-    app = man.get("app")
-    if not isinstance(app, dict):
-        rep.error("manifest", "app must be an object with min_version and plugin_api")
-    else:
-        if not (isinstance(app.get("min_version"), str) and APP_VERSION_RE.match(app["min_version"])):
-            rep.error("manifest", "app.min_version must look like 3.0.0")
-        if "max_version" in app and not (isinstance(app["max_version"], str) and APP_VERSION_RE.match(app["max_version"])):
-            rep.error("manifest", "app.max_version must look like 3.9.0")
-        if app.get("plugin_api") not in SUPPORTED_PLUGIN_API:
-            rep.error("manifest", f"app.plugin_api must be one of {sorted(SUPPORTED_PLUGIN_API)}")
-
+    _manifest_identity(man, rep)
+    _manifest_app(man, rep)
     _check_help_and_credits(root, man, rep)
-    data_version = man.get("data_version")
-    if data_version is not None and not (isinstance(data_version, int) and not isinstance(data_version, bool)
-                                         and 1 <= data_version <= 1_000_000):
-        rep.error("manifest", "data_version must be a whole number from 1 to 1000000")
-    contributes = man.get("contributes")
-    if not (isinstance(contributes, dict) and contributes):
-        rep.error("manifest", "contributes must be a non-empty object")
-        contributes = {}
-    for kind in contributes:
-        if kind not in ALL_KINDS:
-            rep.error("contributes", f"unknown kind '{kind}' (allowed: {list(ALL_KINDS)})")
-    if "backend" in contributes:
-        _check_backend(root, contributes["backend"], app.get("plugin_api") if isinstance(app, dict) else None, rep)
-
-    libraries = {c.get("library") for c in contributes.get("codex", []) if isinstance(c, dict)}
-    for kind in KINDS:
-        items = contributes.get(kind)
-        if items is None:
-            continue
-        if not isinstance(items, list) or not items:
-            rep.error("contributes", f"{kind} must be a non-empty list")
-            continue
-        seen: set[str] = set()
-        for i, item in enumerate(items):
-            where = f"contributes.{kind}[{i}]"
-            if not isinstance(item, dict):
-                rep.error(where, "must be an object")
-                continue
-            keys = {"library", "path"} if kind == "codex" else {"id", "path"}
-            if set(item) != keys:
-                rep.error(where, f"must have exactly the keys {sorted(keys)}")
-                continue
-            key = item["library"] if kind == "codex" else item["id"]
-            if kind != "codex" and not (isinstance(key, str) and SUB_ID_RE.match(key)):
-                rep.error(where, "id must be lowercase letters, digits and hyphens")
-            if key in seen:
-                rep.error(where, f"duplicate {'library' if kind == 'codex' else 'id'} '{key}'")
-            seen.add(key)
-            if kind == "themes":
-                _check_theme(root, item, rep, where)
-            elif kind == "personas":
-                _check_persona(root, item, rep, where, libraries)
-            else:
-                _check_codex(root, item, rep, where)
-
-    if expect_id is not None and man.get("id") != expect_id:
-        rep.error("manifest", f"id is '{man.get('id')}' but the registry entry says '{expect_id}'")
-    if expect_version is not None and man.get("version") != expect_version:
-        rep.error("manifest", f"version is '{man.get('version')}' but the registry entry says '{expect_version}'")
-    if expect_kinds is not None and sorted(expect_kinds) != sorted(k for k in contributes if k in ALL_KINDS):
-        rep.error("manifest", f"contributes {sorted(contributes)} but the registry entry lists kinds {sorted(expect_kinds)}")
+    _manifest_data_version(man, rep)
+    contributes = _manifest_contributions(root, man, rep)
+    _manifest_expectations(man, contributes, rep, (expect_id, expect_version, expect_kinds))
     for name in ("README.md", "LICENSE"):
         if not (root / name).is_file():
             rep.warn("tree", f"{name} is missing")

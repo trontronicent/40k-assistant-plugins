@@ -42,7 +42,15 @@ request. There is no automatic CI: a maintainer runs
 
 Optional, recommended in your fork: `git config core.hooksPath tools/hooks`
 runs the offline check on every commit of `registry.json` and the remote
-check before every push.
+check before every push. When you change `tools/registry_tool.py` or a test,
+the same hook runs the tool's tests:
+
+```
+python -m unittest discover -s tests          # 37 checks, no dependencies, no network
+```
+
+They pin the accepted registry entry and plugin manifest and the exact message
+of every rejection, so a new rule cannot loosen an existing one unnoticed.
 
 ## Updating a plugin
 

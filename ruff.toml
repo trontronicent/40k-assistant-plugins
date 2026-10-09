@@ -1,0 +1,25 @@
+# The code shape every Strategicum plugin keeps — the same limits as the app and the No Man's Sky plugin
+# (J:\40k-assistant\docs\architecture\code-shape.md). `tests/test_code_shape.py` runs exactly this and fails
+# with the findings, so a smell comes back as a red test instead of as a slow decay.
+#
+# Copy this file into your own plugin unchanged. It applies the moment you add a backend module; for a plugin
+# that only contributes themes, personas or Codex documents there is nothing to check yet, and the test passes.
+line-length = 140
+target-version = "py311"
+
+[lint]
+select = ["F", "E9", "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "B905", "SIM105", "SIM109", "RUF012",
+          "ARG001", "PLW2901"]
+
+[lint.mccabe]
+max-complexity = 12
+
+[lint.pylint]
+max-args = 6
+max-branches = 12
+max-returns = 8
+max-statements = 50
+
+[lint.per-file-ignores]
+# Fakes ignore arguments and keep class-level data; test scenarios are long on purpose.
+"tests/*" = ["ARG001", "PLR0913", "PLR0915", "C901", "PLR0912", "RUF012", "B905"]

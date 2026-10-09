@@ -1,9 +1,23 @@
 #!/bin/sh
-# Offline check of registry.json before every commit that touches it (fast, no network).
-# Enable once per clone:  git config core.hooksPath tools/hooks
-git diff --cached --name-only | grep -qx "registry.json" || exit 0
+# Offline checks before a commit (fast, no network). Enable once per clone:
+#   git config core.hooksPath tools/hooks
+#
+# - registry.json staged -> validate it.
+# - the tool or its tests staged -> run the test suite (standard library only).
+staged=$(git diff --cached --name-only)
+echo "$staged" | grep -qx "registry.json" || echo "$staged" | grep -q "^tools/registry_tool.py$\|^tests/" || exit 0
 . "$(dirname "$0")/_python.sh"
-"$PY" tools/registry_tool.py validate registry.json || {
-    echo "STC hook: registry.json has errors; commit refused." >&2
-    exit 1
-}
+
+if echo "$staged" | grep -q "^tools/registry_tool.py$\|^tests/"; then
+    "$PY" -m unittest discover -s tests -q || {
+        echo "STC hook: the registry tool's tests fail; commit refused." >&2
+        exit 1
+    }
+fi
+
+if echo "$staged" | grep -qx "registry.json"; then
+    "$PY" tools/registry_tool.py validate registry.json || {
+        echo "STC hook: registry.json has errors; commit refused." >&2
+        exit 1
+    }
+fi
