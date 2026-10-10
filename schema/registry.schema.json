@@ -32,6 +32,38 @@
       "items": {
         "$ref": "#/$defs/entry"
       }
+    },
+    "categories": {
+      "type": "array",
+      "maxItems": 40,
+      "description": "The category vocabulary: the label and order of each category the app offers as a filter chip (app 3.13.0). A new category ships by adding a row here - no app release needed.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "order": {
+            "type": "integer",
+            "description": "Lower comes first; entries without an order come last."
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -161,6 +193,21 @@
             ]
           },
           "description": "Copied from the manifest's contributes.backend.permissions by registry_tool.py pin; shown before installing."
+        },
+        "categories": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$"
+          },
+          "description": "What the plugin is, for the STC Archive's category filter (app 3.13.0). The labels and the filter order come from the registry document's own `categories` vocabulary; an unlisted slug is shown title-cased."
+        },
+        "manifest_url": {
+          "type": "string",
+          "pattern": "^https://[A-Za-z0-9.-]+(:\\d+)?/[A-Za-z0-9._~/{}-]+$",
+          "description": "Where this plugin's strategicum-plugin.json can be read per tag, with {ref} replaced by the tag (app 3.13.0). The app resolves the plugin's versions from its own repository and reads the manifest from here; without it the entry's pinned version is used as it stands. For a github.com repo the raw.githubusercontent.com address is derived automatically."
         }
       }
     }

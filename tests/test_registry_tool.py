@@ -531,6 +531,85 @@ class TestEntries(unittest.TestCase):
         self.assertTrue(rt.validate_registry_doc([]).errors)
 
 
+class TestCategories(unittest.TestCase):
+    """Plugin categories and manifest_url (app 3.13.0): the registry check must reject exactly what the
+    app rejects, because the app re-validates everything and a looser check here only moves the failure
+    from review time to install time."""
+
+    def entry_errors(self, **over):
+        """The errors of a good entry with `over` applied."""
+        entry = good_entry()
+        entry.update(over)
+        return rt.validate_entry(entry, 0).errors
+
+    def test_an_entry_may_declare_categories_and_a_manifest_url(self):
+        """Both keys are optional additions to an entry.
+
+        Expected: no errors with either or both set. An entry that validated before must still validate,
+        and an entry using the new keys must not be refused by the hook."""
+        self.assertEqual(self.entry_errors(), [])
+        self.assertEqual(self.entry_errors(categories=["game", "persona"]), [])
+        self.assertEqual(self.entry_errors(
+            manifest_url="https://raw.githubusercontent.com/o/r/{ref}/strategicum-plugin.json"), [])
+
+    def test_bad_categories_are_refused(self):
+        """A non-list, an upper-case or spaced slug, a non-string and more than MAX_CATEGORIES are refused.
+
+        Expected: an error for each. The app filters its plugin list by these slugs, so one that does not
+        match CATEGORY_RE would be filed under a chip nobody can select."""
+        for bad in ("game", ["Game"], ["has space"], ["-lead"], ["trail-"], [1], ["a"],
+                    ["c%d" % i for i in range(rt.MAX_CATEGORIES + 1)]):
+            self.assertTrue(self.entry_errors(categories=bad), f"{bad!r} should be refused")
+
+    def test_a_manifest_url_must_be_https_and_carry_the_ref_placeholder(self):
+        """The URL is fetched once per candidate tag, with {ref} replaced by the tag.
+
+        Expected: http, a missing {ref}, a traversal and a non-string are refused. Without the
+        placeholder every tag would read the same file, so the app would offer the wrong version."""
+        for bad in ("http://x.test/{ref}/m.json", "https://x.test/fixed.json",
+                    "https://x.test/../{ref}/m.json", 7):
+            self.assertTrue(self.entry_errors(manifest_url=bad), f"{bad!r} should be refused")
+
+    def test_the_document_may_declare_a_category_vocabulary(self):
+        """The registry document's top-level `categories` names and orders the app's filter chips.
+
+        Expected: a valid vocabulary passes; a non-list and an entry with a bad slug or no label are
+        refused. The vocabulary is how a new category ships without an app release, so it is the one
+        place a typo would silently rename a chip."""
+        def doc(**over):
+            """A registry document with one good entry, fields overridden per case."""
+            base = {"schema_version": rt.SUPPORTED_SCHEMA_VERSION, "name": "STC Index",
+                    "updated": "2026-10-10", "plugins": [good_entry()]}
+            base.update(over)
+            return base
+
+        self.assertEqual(rt.validate_registry_doc(doc(categories=[
+            {"id": "game", "label": "Games", "order": 1, "description": "Game companions"},
+            {"id": "utility", "label": "Utilities"},
+        ])).errors, [])
+        self.assertTrue(rt.validate_registry_doc(doc(categories={})).errors)
+        self.assertTrue(rt.validate_registry_doc(doc(categories=[{"id": "Bad", "label": "x"}])).errors)
+        self.assertTrue(rt.validate_registry_doc(doc(categories=[{"id": "game"}])).errors)
+        self.assertTrue(rt.validate_registry_doc(doc(categories=[{"id": "game", "label": ""}])).errors)
+
+    def test_a_manifest_may_declare_categories(self):
+        """The same slug rule applies to a plugin manifest, which is where categories originate.
+
+        Expected: a manifest with valid categories passes and a bad slug is refused, so `manifest DIR`
+        tells a contributor before the app does."""
+        def identity_errors(categories):
+            """The errors _manifest_identity reports for a manifest with these categories."""
+            man = good_manifest()
+            man["categories"] = categories
+            rep = rt.Report()
+            rt._manifest_identity(man, rep)
+            return rep.errors
+
+        self.assertEqual(identity_errors(["game", "knowledge-base"]), [])
+        self.assertTrue(identity_errors(["Game"]))
+        self.assertTrue(identity_errors("game"))
+
+
 # ── The report itself ────────────────────────────────────────────────────────
 
 class TestReport(unittest.TestCase):

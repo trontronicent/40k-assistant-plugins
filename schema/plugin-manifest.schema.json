@@ -233,6 +233,16 @@
           }
         }
       }
+    },
+    "categories": {
+      "type": "array",
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$"
+      },
+      "description": "What the plugin is, for the STC Archive's category filter (app 3.13.0). The labels and the filter order come from the registry document's own `categories` vocabulary; an unlisted slug is shown title-cased."
     }
   },
   "$defs": {

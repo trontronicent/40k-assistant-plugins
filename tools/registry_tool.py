@@ -60,7 +60,18 @@ CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 
 ENTRY_REQUIRED = ("id", "name", "description", "author", "repo", "version", "tag",
                   "commit", "kinds", "min_app_version", "plugin_api", "license")
-ENTRY_OPTIONAL = ("homepage", "tags", "yanked", "deprecated", "max_app_version", "permissions")
+ENTRY_OPTIONAL = ("homepage", "tags", "yanked", "deprecated", "max_app_version", "permissions",
+                  "categories", "manifest_url")
+
+# Categories and the per-tag manifest URL (app 3.13.0). The same constants live in the app's
+# src/plugins/manifest.py (MAX_CATEGORIES, CATEGORY_RE) and src/plugins/registry.py (MANIFEST_URL_RE):
+# this check exists to refuse at review time exactly what the app refuses at install time.
+MAX_CATEGORIES = 5
+CATEGORY_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$")
+MANIFEST_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?/[A-Za-z0-9._~/{}-]+$")
+MAX_VOCABULARY = 40
+MAX_CATEGORY_LABEL = 40
+MAX_CATEGORY_DESCRIPTION = 200
 
 PERSONA_MODES = {"off", "tool", "auto"}      # web_search_mode and knowledge_mode
 MAX_KNOWLEDGE_TOP_K = 10
@@ -183,6 +194,65 @@ def _entry_listing_fields(entry: dict, where: str, rep: Report) -> None:
             rep.error(where, f"tags must be at most {MAX_ENTRY_TAGS} distinct lowercase words (a-z, 0-9, -)")
 
 
+def _categories_problem(raw: object) -> str | None:
+    """Why a `categories` value is unusable, or None. Shared by the entry and the manifest check."""
+    if not (isinstance(raw, list) and len(raw) <= MAX_CATEGORIES):
+        return f"categories must be a list of at most {MAX_CATEGORIES} entries"
+    bad = [c for c in raw if not (isinstance(c, str) and CATEGORY_RE.match(c))]
+    if bad:
+        return f"categories must match {CATEGORY_RE.pattern} ({bad[0]!r} does not)"
+    return None
+
+
+def _entry_classification(entry: dict, where: str, rep: Report) -> None:
+    """What the app files the plugin under, and where it reads the manifest of each tag (app 3.13.0)."""
+    if "categories" in entry:
+        problem = _categories_problem(entry["categories"])
+        if problem:
+            rep.error(where, problem)
+    if "manifest_url" in entry:
+        url = entry["manifest_url"]
+        if not (isinstance(url, str) and MANIFEST_URL_RE.match(url) and "{ref}" in url and ".." not in url):
+            rep.error(where, "manifest_url must be an https URL containing the {ref} placeholder")
+
+
+def vocabulary_problems(raw: object) -> list[str]:
+    """Why a registry document's `categories` vocabulary is unusable; [] when it is fine.
+
+    The vocabulary only labels and orders the app's filter chips, but it is the one place a new category
+    ships without an app release - so a typo here silently renames a chip for every user.
+    """
+    if not isinstance(raw, list):
+        return ["categories must be a list of {id, label} objects"]
+    if len(raw) > MAX_VOCABULARY:
+        return [f"categories must hold at most {MAX_VOCABULARY} entries"]
+    problems, seen = [], set()
+    for i, item in enumerate(raw):
+        at = f"categories[{i}]"
+        if not isinstance(item, dict):
+            problems.append(f"{at} must be an object")
+            continue
+        unknown = [k for k in item if k not in ("id", "label", "description", "order")]
+        problems += [f"{at}: unknown key '{k}'" for k in unknown]
+        slug, label = item.get("id"), item.get("label")
+        if not (isinstance(slug, str) and CATEGORY_RE.match(slug)):
+            problems.append(f"{at}.id must match {CATEGORY_RE.pattern}")
+        elif slug in seen:
+            problems.append(f"{at}.id '{slug}' is listed twice")
+        else:
+            seen.add(slug)
+        if not (isinstance(label, str) and label.strip() and len(label) <= MAX_CATEGORY_LABEL):
+            problems.append(f"{at}.label must be a non-empty string of at most {MAX_CATEGORY_LABEL} characters")
+        description = item.get("description")
+        if description is not None and not (isinstance(description, str)
+                                           and len(description) <= MAX_CATEGORY_DESCRIPTION):
+            problems.append(f"{at}.description must be a string of at most {MAX_CATEGORY_DESCRIPTION} characters")
+        order = item.get("order")
+        if order is not None and not (isinstance(order, int) and not isinstance(order, bool)):
+            problems.append(f"{at}.order must be a whole number")
+    return problems
+
+
 def validate_entry(entry: object, index: int, allow_local: bool = False) -> Report:
     """Check one registry entry's shape and values (no network).
 
@@ -205,7 +275,27 @@ def validate_entry(entry: object, index: int, allow_local: bool = False) -> Repo
     _entry_commit(entry, where, rep)
     _entry_app_fields(entry, where, rep)
     _entry_listing_fields(entry, where, rep)
+    _entry_classification(entry, where, rep)
     return rep
+
+
+DOC_KEYS = {"$schema", "schema_version", "name", "updated", "plugins", "categories"}
+
+
+def _doc_header(doc: dict, rep: Report) -> None:
+    """Everything in the registry document except the plugin list: keys, version, name, date, vocabulary."""
+    for key in doc:
+        if key not in DOC_KEYS:
+            rep.error("registry", f"unknown key '{key}'")
+    if doc.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
+        rep.error("registry", f"schema_version must be {SUPPORTED_SCHEMA_VERSION}")
+    if not isinstance(doc.get("name"), str) or not doc.get("name"):
+        rep.error("registry", "name must be a non-empty string")
+    if not (isinstance(doc.get("updated"), str) and DATE_RE.match(doc["updated"])):
+        rep.error("registry", "updated must be a YYYY-MM-DD date")
+    if "categories" in doc:
+        for problem in vocabulary_problems(doc["categories"]):
+            rep.error("registry", problem)
 
 
 def validate_registry_doc(doc: object, allow_local: bool = False) -> Report:
@@ -214,16 +304,7 @@ def validate_registry_doc(doc: object, allow_local: bool = False) -> Report:
     if not isinstance(doc, dict):
         rep.error("registry", "must be a JSON object")
         return rep
-    allowed = {"$schema", "schema_version", "name", "updated", "plugins"}
-    for key in doc:
-        if key not in allowed:
-            rep.error("registry", f"unknown key '{key}'")
-    if doc.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
-        rep.error("registry", f"schema_version must be {SUPPORTED_SCHEMA_VERSION}")
-    if not isinstance(doc.get("name"), str) or not doc.get("name"):
-        rep.error("registry", "name must be a non-empty string")
-    if not (isinstance(doc.get("updated"), str) and DATE_RE.match(doc["updated"])):
-        rep.error("registry", "updated must be a YYYY-MM-DD date")
+    _doc_header(doc, rep)
     plugins = doc.get("plugins")
     if not isinstance(plugins, list):
         rep.error("registry", "plugins must be a list")
@@ -480,7 +561,8 @@ def _check_help_and_credits(root: Path, man: dict, rep: "Report") -> None:
 
 
 MANIFEST_KEYS = {"$schema", "manifest_version", "id", "name", "version", "description",
-                 "author", "license", "app", "contributes", "help", "credits", "data_version"}
+                 "author", "license", "app", "contributes", "help", "credits", "data_version",
+                 "categories"}
 MANIFEST_TEXTS = (("name", 60), ("description", 300), ("license", 60))
 MAX_DATA_VERSION = 1_000_000
 # The one check per contribution kind, so adding a kind is a row here and not a branch in the loop.
@@ -498,6 +580,10 @@ def _manifest_identity(man: dict, rep: Report) -> None:
         rep.error("manifest", "id must match ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
     if not (isinstance(man.get("version"), str) and SEMVER_RE.match(man["version"])):
         rep.error("manifest", "version must be semantic (1.2.3)")
+    if "categories" in man:
+        problem = _categories_problem(man["categories"])
+        if problem:
+            rep.error("manifest", problem)
     for key, max_len in MANIFEST_TEXTS:
         if not isinstance(man.get(key), str) or not man[key].strip() or len(man[key]) > max_len:
             rep.error("manifest", f"'{key}' must be a non-empty string of at most {max_len} characters")
@@ -733,6 +819,29 @@ def cmd_manifest(args: argparse.Namespace) -> int:
     return 1 if rep.errors else 0
 
 
+def entry_from_manifest(man: dict, repo: str, tag: str, commit: str) -> dict:
+    """The registry entry a validated manifest describes (pure, so `pin` stays a thin command).
+
+    Note that `version`, `tag` and `commit` are the *frozen fallback* since app 3.13.0: an app from
+    3.13.0 on reads the plugin's own repository instead, and only an older app installs this pin.
+    """
+    fresh = {
+        "id": man["id"], "name": man["name"], "description": man["description"],
+        "author": man["author"]["name"], "repo": repo, "version": man["version"], "tag": tag,
+        "commit": commit, "kinds": [k for k in ALL_KINDS if k in man["contributes"]],
+        "min_app_version": man["app"]["min_version"], "plugin_api": man["app"]["plugin_api"],
+        "license": man["license"],
+    }
+    if "max_version" in man["app"]:
+        fresh["max_app_version"] = man["app"]["max_version"]
+    backend = man["contributes"].get("backend")
+    if isinstance(backend, dict) and backend.get("permissions"):
+        fresh["permissions"] = backend["permissions"]
+    if man.get("categories"):
+        fresh["categories"] = list(man["categories"])
+    return fresh
+
+
 def cmd_pin(args: argparse.Namespace) -> int:
     problem = _check_repo_url(args.repo, args.allow_local)
     if problem:
@@ -758,26 +867,15 @@ def cmd_pin(args: argparse.Namespace) -> int:
     finally:
         _rmtree(tmp)
 
-    author = man["author"]["name"]
-    fresh = {
-        "id": man["id"], "name": man["name"], "description": man["description"], "author": author,
-        "repo": args.repo, "version": man["version"], "tag": args.tag, "commit": commit,
-        "kinds": [k for k in ALL_KINDS if k in man["contributes"]],
-        "min_app_version": man["app"]["min_version"], "plugin_api": man["app"]["plugin_api"],
-        "license": man["license"],
-    }
-    if "max_version" in man["app"]:
-        fresh["max_app_version"] = man["app"]["max_version"]
-    backend = man["contributes"].get("backend")
-    if isinstance(backend, dict) and backend.get("permissions"):
-        fresh["permissions"] = backend["permissions"]
+    fresh = entry_from_manifest(man, args.repo, args.tag, commit)
     plugins = doc.setdefault("plugins", [])
     for i, entry in enumerate(plugins):
         if entry.get("id") == man["id"]:
             if entry.get("repo") != args.repo:
                 print(f"ERROR id '{man['id']}' is registered for {entry.get('repo')}; ids are never reused")
                 return 1
-            kept = {k: v for k, v in entry.items() if k in ("homepage", "tags", "deprecated")}
+            kept = {k: v for k, v in entry.items()
+                    if k in ("homepage", "tags", "deprecated", "manifest_url")}
             plugins[i] = {**fresh, **kept}
             action = f"updated {entry.get('version')} -> {man['version']}"
             break

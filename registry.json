@@ -2,7 +2,14 @@
   "$schema": "./schema/registry.schema.json",
   "schema_version": 1,
   "name": "Strategicum STC Index",
-  "updated": "2026-10-09",
+  "updated": "2026-10-10",
+  "categories": [
+    { "id": "game", "label": "Games", "order": 1, "description": "A companion for a game you play" },
+    { "id": "persona", "label": "Personas", "order": 2, "description": "Brings one or more personas to chat with" },
+    { "id": "knowledge-base", "label": "Knowledge", "order": 3, "description": "Adds documents to the Codex" },
+    { "id": "utility", "label": "Utilities", "order": 4, "description": "Tools for the app itself" },
+    { "id": "theme", "label": "Themes", "order": 5, "description": "Changes how the app looks" }
+  ],
   "plugins": [
     {
       "id": "nomanssky",
@@ -24,6 +31,12 @@
         "read-game-memory",
         "network"
       ],
+      "categories": [
+        "game",
+        "persona",
+        "knowledge-base"
+      ],
+      "manifest_url": "https://raw.githubusercontent.com/trontronicent/40k-assistant-nomanssky/{ref}/strategicum-plugin.json",
       "homepage": "https://github.com/trontronicent/40k-assistant-nomanssky",
       "tags": [
         "game",
