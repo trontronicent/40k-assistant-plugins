@@ -39,29 +39,22 @@
     {
       "id": "nomanssky",
       "name": "No Man's Sky",
-      "description": "Connector to No Man's Sky: inventories, equipment, galaxy and system maps, trade routes, settlements, frigates, timers, your discoveries, companions and creature-battle abilities, and a persona that answers from your game data. Keeps a Codex knowledge library up to date.",
+      "description": "Connector to No Man's Sky: inventories, storage and equipment (what each part does, base values), galaxy and system maps, economies and trade routes, settlements, frigates and timers, and a persona that answers from your game data - cooking, expeditions, item values - also with the game closed.",
       "author": "Reto Kummer alias Reat Kay",
       "repo": "https://github.com/trontronicent/40k-assistant-nomanssky.git",
-      "version": "0.15.0-beta.1",
-      "tag": "v0.15.0-beta.1",
-      "commit": "f556323710189f741990c7fb84a078c73df7d83d",
+      "version": "0.14.1",
+      "tag": "v0.14.1",
+      "commit": "96df23237c0f42ff9db464831ae7183b19f65bb4",
       "kinds": [
-        "codex",
         "backend"
       ],
-      "min_app_version": "3.15.0",
+      "min_app_version": "3.12.0",
       "plugin_api": 2,
       "license": "MIT",
       "permissions": [
         "read-game-files",
         "read-game-memory",
-        "network",
-        "write-codex"
-      ],
-      "categories": [
-        "game",
-        "persona",
-        "knowledge-base"
+        "network"
       ],
       "manifest_url": "https://raw.githubusercontent.com/trontronicent/40k-assistant-nomanssky/{ref}/strategicum-plugin.json",
       "homepage": "https://github.com/trontronicent/40k-assistant-nomanssky",
