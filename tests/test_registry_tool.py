@@ -610,6 +610,35 @@ class TestCategories(unittest.TestCase):
         self.assertTrue(identity_errors("game"))
 
 
+class TestCodexContribution(unittest.TestCase):
+    """The Codex channel (app 3.14.0): the new permission, and a library with no shipped folder."""
+
+    def test_write_codex_is_an_accepted_permission(self):
+        """A backend may declare `write-codex`.
+
+        Expected: it is in PERMISSIONS, so a plugin that keeps Codex documents passes review. The app
+        refuses an unknown permission outright, so a typo must be caught here first."""
+        self.assertIn("write-codex", rt.PERMISSIONS)
+
+    def test_a_codex_contribution_may_name_a_library_with_no_folder(self):
+        """`contributes.codex` without `path` means the plugin writes its documents at runtime.
+
+        Expected: no error for a library alone; a declared path that does not exist is still refused;
+        a bad library name is still refused. The library must be declarable on its own, because it is
+        what the trust dialog shows and what the app writes into - with or without shipped files."""
+        rep = rt.Report()
+        rt._check_codex(Path("."), {"library": "My Library"}, rep, "contributes.codex[0]")
+        self.assertEqual(rep.errors, [])
+
+        rep = rt.Report()
+        rt._check_codex(Path("."), {"library": "My Library", "path": "nope"}, rep, "contributes.codex[0]")
+        self.assertTrue(rep.errors)
+
+        rep = rt.Report()
+        rt._check_codex(Path("."), {"library": "bad/name"}, rep, "contributes.codex[0]")
+        self.assertTrue(rep.errors)
+
+
 # ── The report itself ────────────────────────────────────────────────────────
 
 class TestReport(unittest.TestCase):

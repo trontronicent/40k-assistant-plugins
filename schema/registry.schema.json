@@ -189,7 +189,8 @@
             "enum": [
               "read-game-files",
               "read-game-memory",
-              "network"
+              "network",
+              "write-codex"
             ]
           },
           "description": "Copied from the manifest's contributes.backend.permissions by registry_tool.py pin; shown before installing."

@@ -41,7 +41,8 @@ SUPPORTED_PLUGIN_API = {1, 2}
 KINDS = ("themes", "personas", "codex")
 ALL_KINDS = KINDS + ("backend",)
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
-PERMISSIONS = {"read-game-files", "read-game-memory", "network"}
+# `write-codex` (app 3.14.0) lets a plugin keep documents in one Codex library through ctx.codex.
+PERMISSIONS = {"read-game-files", "read-game-memory", "network", "write-codex"}
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
 GIT_TIMEOUT_S = 120
 
@@ -460,6 +461,10 @@ def _check_codex(root: Path, item: dict, rep: Report, where: str) -> None:
     library = item.get("library")
     if not (isinstance(library, str) and LIBRARY_RE.match(library) and library.strip() == library):
         rep.error(where, "library must be a plain name (no / \\ : * ? \" < > |, not starting with _ or .)")
+    if "path" not in item:
+        # app 3.14.0: no shipped folder - the plugin writes its documents at runtime through
+        # ctx.codex, and the library named above is where they go.
+        return
     folder = _confined(root, item.get("path"))
     if folder is None:
         rep.error(where, "path must be relative and stay inside the plugin")
